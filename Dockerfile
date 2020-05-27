@@ -24,7 +24,7 @@ LABEL END=cc-tool STAGE=src
 # Execute compile
 FROM src as make
 WORKDIR /src
-RUN ./bootstrap \
+RUN true \
     && ./configure --prefix /opt/cc-tool  \
     && nproc | xargs -I % make -j%
 LABEL END=cc-tool STAGE=make
