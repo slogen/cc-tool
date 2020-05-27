@@ -1,0 +1,53 @@
+## https://docs.docker.com/develop/develop-images/dockerfile_best-practices/
+## https://docs.docker.com/develop/develop-images/multistage-build/
+
+ARG END=@@END@@
+
+FROM @@BASE@@ as base
+RUN apk update
+
+# Possibly shared basic dev-env #######################################
+FROM base AS dev
+RUN apk add @@DEV_PACKAGES@@
+LABEL STAGE=dev
+
+FROM dev as build
+RUN apk add @@BUILD_PACKAGES@@
+LABEL END=@@END@@ STAGE=build
+
+# Get source for compile
+FROM build AS src
+WORKDIR /src
+COPY . .
+LABEL END=@@END@@ STAGE=src
+
+# Execute compile
+FROM src as make
+WORKDIR /src
+RUN ./bootstrap \
+    && ./configure --prefix @@PREFIX_DIR@@  \
+    && nproc | xargs -I % make -j%
+LABEL END=@@END@@ STAGE=make
+
+# Install
+FROM make as install
+WORKDIR /src
+RUN make install
+LABEL END=@@END@@ STAGE=install
+
+#######################################################################
+FROM base AS staging
+WORKDIR @@PREFIX_DIR@@
+COPY --from=install @@PREFIX_DIR@@ .
+ENTRYPOINT ["/bin/sh"]
+LABEL END=@@END@@ STAGE=staging
+
+
+#######################################################################
+FROM staging AS final
+WORKDIR @@PREFIX_DIR@@
+RUN true \
+    && apk add @@RUNTIME_PACKAGES@@ 
+ENTRYPOINT ["/bin/sh"]
+LABEL END=@@END@@ STAGE=final
+
