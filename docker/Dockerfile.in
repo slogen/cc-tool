@@ -1,53 +1,59 @@
+
+### Build code inside docker environments, separate build and final
+
+
 ## https://docs.docker.com/develop/develop-images/dockerfile_best-practices/
 ## https://docs.docker.com/develop/develop-images/multistage-build/
 
-ARG END=@@END@@
+### Name what we are building:
+ARG DOCKER_END=@@DOCKER_END@@
 
-FROM @@BASE@@ as base
-RUN apk update
+### Base both build and final from this base
 
-# Possibly shared basic dev-env #######################################
-FROM base AS dev
-RUN apk add @@DEV_PACKAGES@@
-LABEL STAGE=dev
+###################### BUILD #############################
+# Allow shared dev-env cache
+FROM @@DOCKER_BASE@@ AS dev_env
+RUN @@ADD_PACKAGE@@ @@DEV_PACKAGES@@
+LABEL STAGE=dev_env
 
-FROM dev as build
-RUN apk add @@BUILD_PACKAGES@@
-LABEL END=@@END@@ STAGE=build
+# Allow shared build-env in cache
+FROM dev_env as build_env
+RUN @@ADD_PACKAGE@@ @@BUILD_PACKAGES@@
+LABEL DOCKER_END=@@DOCKER_END@@ STAGE=build_env
 
 # Get source for compile
-FROM build AS src
-WORKDIR /src
+FROM build_env AS bootstrap
+WORKDIR /origin
 COPY . .
-LABEL END=@@END@@ STAGE=src
+RUN ./bootstrap
+LABEL DOCKER_END=@@DOCKER_END@@ STAGE=src
+
+# Execute configure for compile
+FROM bootstrap as configure
+RUN ./configure --prefix @@PREFIX_DIR@@
+LABEL DOCKER_END=@@DOCKER_END@@ STAGE=configure
 
 # Execute compile
-FROM src as make
-WORKDIR /src
-RUN true \
-    && ./configure --prefix @@PREFIX_DIR@@  \
-    && nproc | xargs -I % make -j%
-LABEL END=@@END@@ STAGE=make
+FROM configure as make
+RUN nproc | xargs -I % make -j%
+LABEL DOCKER_END=@@DOCKER_END@@ STAGE=make
 
 # Install
 FROM make as install
-WORKDIR /src
 RUN make install
-LABEL END=@@END@@ STAGE=install
+LABEL DOCKER_END=@@DOCKER_END@@ STAGE=install
 
 #######################################################################
-FROM base AS staging
+FROM @@DOCKER_BASE@@ AS staging
 WORKDIR @@PREFIX_DIR@@
-COPY --from=install @@PREFIX_DIR@@ .
+COPY --from=install @@PREFIX_DIR@@ @@PREFIX_DIR@@
 ENTRYPOINT ["/bin/sh"]
-LABEL END=@@END@@ STAGE=staging
+LABEL DOCKER_END=@@DOCKER_END@@ STAGE=staging
 
 
 #######################################################################
 FROM staging AS final
-WORKDIR @@PREFIX_DIR@@
-RUN true \
-    && apk add @@RUNTIME_PACKAGES@@ 
+RUN @@ADD_PACKAGE@@ @@RUNTIME_PACKAGES@@ 
 ENTRYPOINT ["/bin/sh"]
-LABEL END=@@END@@ STAGE=final
+LABEL DOCKER_END=@@DOCKER_END@@ STAGE=final
 
