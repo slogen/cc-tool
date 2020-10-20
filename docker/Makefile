@@ -15,7 +15,7 @@ GIT_DESCRIBE:=$(shell git describe --always --tags --long)
 
 all: final.docker_build
 
-../Dockerfile:	Dockerfile.in $(EXTRADEP)
+Dockerfile:	Dockerfile.in $(EXTRADEP)
 	perl -pe 's/@@([^@]+)@@/$$ENV{$$1}/' <$(<) >$(@)
 
 DOCKER_FLAGS=--loglevel 2
@@ -25,10 +25,10 @@ DOCKER_BUILD= $(DOCKER) build . \
 
 final.docker_build: DOCKER_FLAGS += --tag='$(END)'
 %.docker_build: DOCKER_FLAGS += --target='$(@:.docker_build=)'
-%.docker_build: ../Dockerfile
+%.docker_build: Dockerfile
 	cd .. && $(DOCKER_BUILD)
 
-../Dockerfile: Dockerfile.in $(EXTRADEP)
+Dockerfile: Dockerfile.in $(EXTRADEP)
 
 DANGLING_FILTER=--filter dangling=true
 clean-images:
