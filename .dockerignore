@@ -1,3 +1,8 @@
+.dockerignore
+docker
+Dockerfile
 **/.git
 *~
 \#.*#
+
+
