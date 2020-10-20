@@ -1,53 +1,59 @@
+
+### Build code inside docker environments, separate build and final
+
+
 ## https://docs.docker.com/develop/develop-images/dockerfile_best-practices/
 ## https://docs.docker.com/develop/develop-images/multistage-build/
 
-ARG END=cc-tool
+### Name what we are building:
+ARG DOCKER_END=cc-tool
 
-FROM alpine as base
-RUN apk update
+### Base both build and final from this base
 
-# Possibly shared basic dev-env #######################################
-FROM base AS dev
+###################### BUILD #############################
+# Allow shared dev-env cache
+FROM alpine:3.12.0 AS dev_env
 RUN apk add alpine-sdk autoconf automake libtool
-LABEL STAGE=dev
+LABEL STAGE=dev_env
 
-FROM dev as build
+# Allow shared build-env in cache
+FROM dev_env as build_env
 RUN apk add libusb-dev boost-dev
-LABEL END=cc-tool STAGE=build
+LABEL DOCKER_END=cc-tool STAGE=build_env
 
 # Get source for compile
-FROM build AS src
-WORKDIR /src
+FROM build_env AS bootstrap
+WORKDIR /origin
 COPY . .
-LABEL END=cc-tool STAGE=src
+RUN ./bootstrap
+LABEL DOCKER_END=cc-tool STAGE=src
+
+# Execute configure for compile
+FROM bootstrap as configure
+RUN ./configure --prefix /opt/cc-tool
+LABEL DOCKER_END=cc-tool STAGE=configure
 
 # Execute compile
-FROM src as make
-WORKDIR /src
-RUN true \
-    && ./configure --prefix /opt/cc-tool  \
-    && nproc | xargs -I % make -j%
-LABEL END=cc-tool STAGE=make
+FROM configure as make
+RUN nproc | xargs -I % make -j%
+LABEL DOCKER_END=cc-tool STAGE=make
 
 # Install
 FROM make as install
-WORKDIR /src
 RUN make install
-LABEL END=cc-tool STAGE=install
+LABEL DOCKER_END=cc-tool STAGE=install
 
 #######################################################################
-FROM base AS staging
+FROM alpine:3.12.0 AS staging
 WORKDIR /opt/cc-tool
-COPY --from=install /opt/cc-tool .
+COPY --from=install /opt/cc-tool /opt/cc-tool
 ENTRYPOINT ["/bin/sh"]
-LABEL END=cc-tool STAGE=staging
+LABEL DOCKER_END=cc-tool STAGE=staging
 
 
 #######################################################################
 FROM staging AS final
-WORKDIR /opt/cc-tool
-RUN true \
-    && apk add libusb boost-filesystem boost-regex boost-program_options 
+RUN apk add libusb boost-filesystem boost-regex boost-program_options 
 ENTRYPOINT ["/bin/sh"]
-LABEL END=cc-tool STAGE=final
+LABEL DOCKER_END=cc-tool STAGE=final
 
